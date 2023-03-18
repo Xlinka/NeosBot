@@ -3,8 +3,8 @@ const { randomUUID } = require("crypto");
 
 module.exports = async function joke(signalRConnection, message, loggedInData) {
   try {
-    const response = await axios.get('https://v2.jokeapi.dev/joke/Any');
-    const joke = response.data.type === 'single' ? response.data.joke : `${response.data.setup}\n${response.data.delivery}`;
+    const response = await axios.get('https://official-joke-api.appspot.com/random_joke');
+    const joke = `${response.data.setup}\n${response.data.punchline}`;
     const sendMessageData = {
       "id": `MSG-${randomUUID()}`,
       "senderId": loggedInData.userId,
