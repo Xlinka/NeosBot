@@ -191,16 +191,16 @@ function runSignalR() {
 
     signalRConnection.start();
 
-    //Actions whenever a message is received
-    signalRConnection.on("ReceiveMessage", (message) => {
-        console.log(`Received ${message.messageType} message from ${message.senderId}: ${message.content}`);
-        let readMessageData = {
-                "senderId": message.senderId,
-                "readTime": (new Date(Date.now())).toISOString(),
-                "ids": [
-                    message.id
-                ]
-        }
+   // Actions whenever a message is received
+    signalRConnection.on("ReceiveMessage", async (message) => {
+    console.log(`Received ${message.messageType} message from ${message.senderId}: ${message.content}`);
+    let readMessageData = {
+        "senderId": message.senderId,
+        "readTime": (new Date(Date.now())).toISOString(),
+        "ids": [
+            message.id
+        ]
+    }
         signalRConnection.send("MarkMessagesRead", readMessageData);
         if (message.messageType == "Text"){
             if (message.content.startsWith("/echo ")){
@@ -216,8 +216,40 @@ function runSignalR() {
     
                 signalRConnection.send("SendMessage", sendMessageData);
             }
+       // Ping command
+       if (message.content.startsWith("/ping")) {
+        let currentTime = Date.now();
+
+        // Send initial message
+        let initialMessageData = {
+            "id": `MSG-${randomUUID()}`,
+            "senderId": loggedInData.userId,
+            "recipientId": message.senderId,
+            "messageType": "Text",
+            "sendTime": (new Date(currentTime)).toISOString(),
+            "lastUpdateTime": (new Date(currentTime)).toISOString(),
+            "content": "Pinging..."
         }
-    });
+        await signalRConnection.send("SendMessage", initialMessageData);
+
+        let responseTime = Date.now();
+        let latency = responseTime - currentTime;
+
+        // Send the latency result back to the user
+        let sendMessageData = {
+            "id": `MSG-${randomUUID()}`,
+            "senderId": loggedInData.userId,
+            "recipientId": message.senderId,
+            "messageType": "Text",
+            "sendTime": (new Date(responseTime)).toISOString(),
+            "lastUpdateTime": (new Date(responseTime)).toISOString(),
+            "content": `Pong! Latency is ${latency}ms.`
+        }
+
+        signalRConnection.send("SendMessage", sendMessageData);
+    }
+}
+});
 
     signalRConnection.on("MessageSent", (data) => {
         console.log(`Sent ${data.messageType} message to ${data.recipientId}: ${data.content}`);
