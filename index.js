@@ -1,8 +1,7 @@
 const https = require('https');
 const config = require("./config.json");
 const signalR = require("@microsoft/signalr");
-const {randomUUID} = require("crypto");
-
+const fs = require('fs');
 const baseAPIURL = "api.neos.com";
 const currentMachineID = GenerateRandomMachineId()
 //Read Config
@@ -191,67 +190,53 @@ function runSignalR() {
 
     signalRConnection.start();
 
-   // Actions whenever a message is received
-    signalRConnection.on("ReceiveMessage", async (message) => {
+// Add the loggedInData and signalRConnection objects to the commands object
+const commands = {};
+
+// Load all command files in the commands folder
+const commandFiles = fs.readdirSync("./commands").filter(file => file.endsWith(".js"));
+for (const file of commandFiles) {
+const command = require(`./commands/${file}`);
+const commandName = file.slice(0, -3); // Remove the .js extension
+commands[commandName] = command;
+}
+   // Add the loggedInData and signalRConnection objects to the commands object
+   commands.loggedInData = loggedInData;
+   commands.signalRConnection = signalRConnection;
+
+signalRConnection.on("ReceiveMessage", async (message) => {
     console.log(`Received ${message.messageType} message from ${message.senderId}: ${message.content}`);
     let readMessageData = {
-        "senderId": message.senderId,
-        "readTime": (new Date(Date.now())).toISOString(),
-        "ids": [
-            message.id
-        ]
+      "senderId": message.senderId,
+      "readTime": (new Date(Date.now())).toISOString(),
+      "ids": [
+        message.id
+      ]
     }
-        signalRConnection.send("MarkMessagesRead", readMessageData);
-        if (message.messageType == "Text"){
-            if (message.content.startsWith("/echo ")){
-                let sendMessageData = {
-                    "id": `MSG-${randomUUID()}`,
-                    "senderId": loggedInData.userId,
-                    "recipientId": message.senderId,
-                    "messageType": "Text",
-                    "sendTime": (new Date(Date.now())).toISOString(),
-                    "lastUpdateTime": (new Date(Date.now())).toISOString(),
-                    "content": message.content.slice(6)
-                }
+    signalRConnection.send("MarkMessagesRead", readMessageData);
     
-                signalRConnection.send("SendMessage", sendMessageData);
-            }
-       // Ping command
-       if (message.content.startsWith("/ping")) {
-        let currentTime = Date.now();
-
-        // Send initial message
-        let initialMessageData = {
-            "id": `MSG-${randomUUID()}`,
-            "senderId": loggedInData.userId,
-            "recipientId": message.senderId,
-            "messageType": "Text",
-            "sendTime": (new Date(currentTime)).toISOString(),
-            "lastUpdateTime": (new Date(currentTime)).toISOString(),
-            "content": "Pinging..."
+    if (message.messageType == "Text") {
+      // Check if the message starts with a command prefix ("/")
+      if (message.content.startsWith("/")) {
+        // Get the command name and parameters
+        const commandParts = message.content.slice(1).split(" ");
+        const commandName = commandParts[0];
+        const commandParams = commandParts.slice(1);
+        
+        // Check if the command exists
+        if (commands.hasOwnProperty(commandName)) {
+            // Call the command function with the SignalR connection, message, loggedInData, and parameters
+            commands[commandName](signalRConnection, message, loggedInData, commandParams);
+        } else {
+            // Handle unknown command
+            console.log(`Unknown command: ${commandName}`);
         }
-        await signalRConnection.send("SendMessage", initialMessageData);
-
-        let responseTime = Date.now();
-        let latency = responseTime - currentTime;
-
-        // Send the latency result back to the user
-        let sendMessageData = {
-            "id": `MSG-${randomUUID()}`,
-            "senderId": loggedInData.userId,
-            "recipientId": message.senderId,
-            "messageType": "Text",
-            "sendTime": (new Date(responseTime)).toISOString(),
-            "lastUpdateTime": (new Date(responseTime)).toISOString(),
-            "content": `Pong! Latency is ${latency}ms.`
-        }
-
-        signalRConnection.send("SendMessage", sendMessageData);
+      }
     }
-}
-});
+  });
 
-    signalRConnection.on("MessageSent", (data) => {
-        console.log(`Sent ${data.messageType} message to ${data.recipientId}: ${data.content}`);
-    });
+signalRConnection.on("MessageSent", (data) => {
+    console.log(`Sent ${data.messageType} message to ${data.recipientId}: ${data.content}`);
+});
 }
+
